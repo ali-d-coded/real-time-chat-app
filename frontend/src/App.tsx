@@ -4,6 +4,8 @@ import RegisterPage from './pages/RegisterPage';
 import ChatPage from './pages/ChatPage';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Home from './pages/Home';
+import CampaignMessages from './pages/CampaignMessages';
+import Layout from './components/Layout';
 
 function App() {
   return (
@@ -14,6 +16,8 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         
         {/* Protected routes */}
+
+        <Route element={<Layout />}>
         <Route
           path="/chat/:convoId"
           element={
@@ -32,6 +36,13 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/campaign-messages" element={
+            <ProtectedRoute>
+            <CampaignMessages />
+            </ProtectedRoute>
+        }
+          />
+        </Route>
         
         {/* Catch all route - redirect to home */}
         <Route path="*" element={<Navigate to="/" replace />} />

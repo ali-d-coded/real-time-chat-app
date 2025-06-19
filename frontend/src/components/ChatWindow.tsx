@@ -9,7 +9,10 @@ import { addMessage, setMessages } from '../features/messages/messageSlice';
 export default function ChatWindow() {
   const dispatch = useDispatch();
   const conversationId = useSelector((state: RootState) => state.convo.selectedId);
+  console.log({conversationId});
+  
   const messages = useSelector((state: RootState) => state.messages.messages);
+  
 
   useEffect(() => {
     if (conversationId) {
@@ -20,8 +23,10 @@ export default function ChatWindow() {
       const socket = getSocket();
       socket?.emit('join_conversation', conversationId);
       socket?.on('receive_message', (msg) => {
+        console.log({msg,conversationId});
+        
+        dispatch(addMessage(msg));
         if (msg.conversationId === conversationId) {
-          dispatch(addMessage(msg));
         }
       });
 

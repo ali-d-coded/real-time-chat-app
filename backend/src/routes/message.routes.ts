@@ -1,6 +1,6 @@
 // routes/message.routes.ts
 import { Router } from 'express';
-import { createConversationIfNotExists, createGroupConversation, getConversations, getMessages } from '../controllers/message.controller';
+import { createConversationIfNotExists, createGroupConversation, getAllCampaignMessages, getConversations, getMessages } from '../controllers/message.controller';
 
 const messageRoutes = Router();
 
@@ -16,9 +16,7 @@ messageRoutes.post('/start', createConversationIfNotExists);
 // POST /api/messages/group
 messageRoutes.post('/group', createGroupConversation);
 
-// PATCH /api/messages/:conversationId
-messageRoutes.patch('/conversations/:conversationId', (req, res) => {
-  // Handle updating a conversation
-});
+// GET /api/messages/campaigns/all
+messageRoutes.get('/campaigns/all', getAllCampaignMessages);
 
 export default messageRoutes;

@@ -1,13 +1,14 @@
+import { ArrowBigRightDash } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import axios from '../api/axios';
-import { getSocket } from '../sockets/socket';
 import { useDispatch, useSelector } from 'react-redux';
-import { selectConversation } from '../features/conversations/convoSlice';
 import { Link, useParams } from 'react-router-dom';
+import axios from '../api/axios';
 import type { RootState } from '../app/store';
 import { logout } from '../features/auth/authSlice';
+import { selectConversation } from '../features/conversations/convoSlice';
+import { getSocket } from '../sockets/socket';
 import Modal from './Modal';
-import { EllipsisVertical } from 'lucide-react';
+import RunCampaignForm from './RunCampaignForm';
 
 interface User {
   _id: string;
@@ -26,6 +27,9 @@ export default function Sidebar() {
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
+  const [showCampaignForm, setShowCampaignForm] = useState(false);
+  
+  const user = useSelector((state: RootState) => state.auth.user);
   
   const [isModalOpen, setModalOpen] = useState(false);
   
@@ -169,52 +173,82 @@ export default function Sidebar() {
   );
 
 
-    
+  
   
 
 
   return (
-    <div className='w-[250px] bg-red-100 h-full flex flex-col'>
-      <h3 className='h-20 flex justify-center items-center text-lg font-bold uppercase tracking-widest bg-amber-100'>
-        <Link to={"/"}>
-          ChatterBox
-        </Link>
-      </h3>
-      
-      {/* Tab Navigation */}
-      <div className='flex bg-red-50 border-b border-red-200'>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-            activeTab === 'users'
-              ? 'bg-red-200 text-red-800 border-b-2 border-red-400'
-              : 'text-red-600 hover:bg-red-100'
-          }`}
-        >
-          Users ({users.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('groups')}
-          className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-            activeTab === 'groups'
-              ? 'bg-red-200 text-red-800 border-b-2 border-red-400'
-              : 'text-red-600 hover:bg-red-100'
-          }`}
-        >
-          Groups ({groups.length})
-        </button>
-      </div>
-
-      {/* Content Area */}
-      <div className='flex-1 overflow-y-auto'>
-        {activeTab === 'users' ? renderUsers() : renderGroups()}
-      </div>
-
-      <div className=' bg-red-200'>
-        <button className='p-3 border rounded-xl' onClick={()=>dispatch(logout())}>
-          Logout
-        </button>
-      </div>
+  <div className="w-[270px] bg-white h-full flex flex-col border-r border-gray-200 shadow-sm ">
+    {/* Header */}
+    <div className="h-20 flex items-center justify-center bg-gradient-to-r from-red-300 to-red-200 shadow-inner">
+      <Link to="/" className="text-xl font-extrabold tracking-widest text-gray-800">
+        ChatterBox - {user?.username}
+      </Link>
     </div>
-  );
+
+    {/* Campaign Controls */}
+    <div className="p-3 border-b border-gray-100">
+      <button
+        onClick={() => setShowCampaignForm(prev => !prev)}
+        className="w-full px-3 py-2 text-sm bg-sky-600 text-white rounded-lg shadow hover:bg-sky-700 transition"
+      >
+        📣 Run Campaign
+      </button>
+      {showCampaignForm && <RunCampaignForm />}
+    </div>
+
+    {/* Campaign Messages Link */}
+    {
+     user?.role == "admin" && (<div className="p-3 border-b border-gray-100">
+      <Link
+        to="/campaign-messages"
+        className="flex items-center justify-between px-3 py-2 bg-green-600 text-white text-sm rounded-lg shadow hover:bg-green-700 transition"
+      >
+        <span>View All Campaigns</span>
+        <ArrowBigRightDash size={20} />
+      </Link>
+    </div>)
+    }
+
+    {/* Tab Navigation */}
+    <div className="flex border-b border-gray-200">
+      <button
+        onClick={() => setActiveTab("users")}
+        className={`flex-1 py-2.5 text-sm font-medium ${
+          activeTab === "users"
+            ? "bg-red-100 text-red-700 border-b-2 border-red-400"
+            : "hover:bg-red-50 text-gray-600"
+        }`}
+      >
+        👤 Users ({users.length})
+      </button>
+      <button
+        onClick={() => setActiveTab("groups")}
+        className={`flex-1 py-2.5 text-sm font-medium ${
+          activeTab === "groups"
+            ? "bg-red-100 text-red-700 border-b-2 border-red-400"
+            : "hover:bg-red-50 text-gray-600"
+        }`}
+      >
+        👥 Groups ({groups.length})
+      </button>
+    </div>
+
+    {/* Main Content Area */}
+    <div className="flex-1 overflow-y-auto px-1 py-2 bg-white">
+      {activeTab === "users" ? renderUsers() : renderGroups()}
+    </div>
+
+    {/* Footer */}
+    <div className="p-3 border-t border-gray-100 bg-red-50">
+      <button
+        onClick={() => dispatch(logout())}
+        className="w-full px-3 py-2 text-sm bg-red-600 text-white rounded-lg shadow hover:bg-red-700 transition"
+      >
+        🚪 Logout
+      </button>
+    </div>
+  </div>
+);
+
 }

@@ -19,6 +19,199 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     return;
 };
 
+export const getAllCampaignMessages = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { page = 1, limit = PAGE_SIZE } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const messages = await Message.aggregate([
+      { $match: { isCampaign: true } },
+      { $sort: { timestamp: -1 } },
+      { $skip: skip },
+      { $limit: Number(limit) },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'sender',
+          foreignField: '_id',
+          as: 'senderInfo'
+        }
+      },
+      {
+        $lookup: {
+          from: 'conversations',
+          localField: 'conversationId',
+          foreignField: '_id',
+          as: 'conversationInfo'
+        }
+      },
+      { $unwind: '$senderInfo' },
+      { $unwind: '$conversationInfo' },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'conversationInfo.participants',
+          foreignField: '_id',
+          as: 'allParticipants'
+        }
+      },
+      {
+        $addFields: {
+          receivers: {
+            $filter: {
+              input: '$allParticipants',
+              as: 'participant',
+              cond: { $ne: ['$$participant._id', '$senderInfo._id'] }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          content: 1,
+          timestamp: 1,
+          isCampaign: 1,
+          conversationId: 1,
+          sender: {
+            _id: '$senderInfo._id',
+            username: '$senderInfo.username',
+            email: '$senderInfo.email'
+          },
+          conversation: {
+            _id: '$conversationInfo._id',
+            name: '$conversationInfo.name',
+            type: '$conversationInfo.type',
+            participantCount: { $size: '$conversationInfo.participants' }
+          },
+          receivers: {
+            $map: {
+              input: '$receivers',
+              as: 'receiver',
+              in: {
+                _id: '$$receiver._id',
+                username: '$$receiver.username',
+                email: '$$receiver.email'
+              }
+            }
+          }
+        }
+      },
+      { $sort: { timestamp: 1 } }
+    ]);
+
+    // Group messages by sender and unique message content
+    const groupedMessages = messages.reduce((acc, message) => {
+      const senderId = message.sender._id.toString();
+      const messageKey = `${message.content}_${message.timestamp}`; // Unique key for message
+
+      if (!acc[senderId]) {
+        acc[senderId] = {
+          sender: message.sender,
+          messages: {},
+          messageCount: 0
+        };
+      }
+
+      if (!acc[senderId].messages[messageKey]) {
+        acc[senderId].messages[messageKey] = {
+          _id: message._id,
+          content: message.content,
+          timestamp: message.timestamp,
+          isCampaign: message.isCampaign,
+          conversation: message.conversation,
+          receivers: []
+        };
+        acc[senderId].messageCount++;
+      }
+
+      // Add receivers to the message
+      acc[senderId].messages[messageKey].receivers.push(...message.receivers);
+
+      return acc;
+    }, {});
+
+    // Convert grouped object to array
+    const result = Object.values(groupedMessages).map((group: any) => ({
+      sender: group.sender,
+      messages: Object.values(group.messages),
+      messageCount: group.messageCount
+    }));
+
+    res.json({
+      success: true,
+      data: result,
+      totalGroups: result.length,
+      page: Number(page),
+      limit: Number(limit),
+      groupedBy: 'sender_and_message'
+    });
+
+  } catch (error: any) {
+    console.error('Error fetching campaign messages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch campaign messages',
+      message: error.message
+    });
+  }
+};
+// Helper function to get campaign message statistics
+export const getCampaignMessageStats = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const stats = await Message.aggregate([
+      { $match: { isCampaign: true } },
+      {
+        $group: {
+          _id: null,
+          totalMessages: { $sum: 1 },
+          uniqueSenders: { $addToSet: '$sender' },
+          uniqueConversations: { $addToSet: '$conversationId' },
+          oldestMessage: { $min: '$timestamp' },
+          newestMessage: { $max: '$timestamp' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalMessages: 1,
+          uniqueSenderCount: { $size: '$uniqueSenders' },
+          uniqueConversationCount: { $size: '$uniqueConversations' },
+          oldestMessage: 1,
+          newestMessage: 1,
+          dateRange: {
+            $divide: [
+              { $subtract: ['$newestMessage', '$oldestMessage'] },
+              1000 * 60 * 60 * 24 // Convert to days
+            ]
+          }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: stats[0] || {
+        totalMessages: 0,
+        uniqueSenderCount: 0,
+        uniqueConversationCount: 0,
+        oldestMessage: null,
+        newestMessage: null,
+        dateRange: 0
+      }
+    });
+
+  } catch (error:any) {
+    console.error('Error fetching campaign message stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch campaign message statistics',
+      message: error.message
+    });
+  }
+};
+
+
 export const createConversationIfNotExists = async (req: Request, res: Response): Promise<void> => {
   const { userId: receiverId } = req.body;
   const senderId = (req as any).user.id;

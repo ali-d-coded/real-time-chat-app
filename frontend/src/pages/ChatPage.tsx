@@ -25,8 +25,8 @@ export default function ChatPage() {
   }, [convoId, dispatch]);
 
   return (
-    <Layout>
+    // <Layout>
       <ChatWindow />
-    </Layout>
+    // </Layout>
   );
 }

@@ -17,6 +17,7 @@ interface ServerToClientEvents {
 
 interface ClientToServerEvents {
   send_message: (data: { conversationId: string; content: string }) => void;
+  send_campaign_message: (data: { conversationId: string; content: string }) => void;
   join_conversation: (data: { conversationId: string }) => void;
   leave_conversation: (data: { conversationId: string }) => void;
   heartbeat: () => void; // Add heartbeat for connection health
@@ -271,6 +272,134 @@ export const setupSocket = (io: Server<ClientToServerEvents, ServerToClientEvent
         }
       });
 
+
+// Enhanced campaign message handler
+socket.on('send_campaign_message', async (data) => {
+  console.log("📤 Send campaign message event received:", data);
+  try {
+    const { content } = data;
+
+    // Input validation
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return socket.emit('error', { message: 'Message content cannot be empty' });
+    }
+
+    if (content.length > 1000) {
+      return socket.emit('error', { message: 'Message too long (max 1000 characters)' });
+    }
+
+    // Verify sender exists and is active
+    const sender = await User.findById(userId).select('_id username isActive');
+    if (!sender) {
+      return socket.emit('error', { message: 'User not found' });
+    }
+
+    // Check if user is active (handle cases where isActive field might not exist)
+    if (sender.isOnline === false) {
+      return socket.emit('error', { message: 'User account is inactive' });
+    }
+
+    // Get all active users except the sender
+    const allUsers = await User.find({ 
+      _id: { $ne: userId },
+      $or: [
+        { isActive: { $exists: false } }, // Handle users without isActive field
+        { isActive: true }
+      ]
+    }).select('_id username');
+
+    console.log(`Found ${allUsers.length} potential recipients for campaign message`);
+
+    if (allUsers.length === 0) {
+      return socket.emit('error', { message: 'No recipients found' });
+    }
+
+    let successCount = 0;
+    const failedRecipients = [];
+
+    // Create messages for each recipient
+    const messagePromises = allUsers.map(async (recipient) => {
+      try {
+        // Find existing conversation or create new one
+        let conversation = await Conversation.findOne({
+          participants: { $all: [userId, recipient._id], $size: 2 },
+          type: 'individual'
+        });
+
+        console.log({conversation});
+        
+
+        // Create conversation if it doesn't exist
+        if (!conversation) {
+          conversation = await Conversation.create({
+            participants: [userId, recipient._id],
+            name: "Campaign",
+            type: 'individual'
+          });
+        }
+
+        // Create the message
+        const message = await Message.create({
+          sender: userId,
+          recipient: recipient._id,
+          conversationId: conversation._id,
+          content: content.trim(),
+          timestamp: new Date(),
+          isCampaign: true
+        });
+
+        // Populate sender information for the message
+        const populatedMsg = await message.populate('sender', '_id username avatar');
+
+        // Update conversation with last message info
+        await Conversation.findByIdAndUpdate(conversation._id, {
+          lastMessage: message._id,
+          lastMessageTime: new Date(),
+          $inc: { messageCount: 1 }
+        });
+
+        // Send to recipient if they are online
+        const recipientId = recipient._id!!.toString();
+        if (userConnections.has(recipientId)) {
+          console.log(`📩 Sending campaign message to online user ${recipientId}`);
+          io.to(conversation._id!!.toString()).emit('receive_message', populatedMsg);
+        } else {
+          console.log(`📪 Campaign message saved for offline user ${recipientId}`);
+
+        }
+
+        successCount++;
+        return { success: true, recipientId };
+
+      } catch (msgError) {
+        console.error(`Failed to send campaign message to user ${recipient._id}:`, msgError);
+        failedRecipients.push(recipient._id!!.toString());
+        return { success: false, recipientId: recipient._id!!.toString(), error: msgError };
+      }
+    });
+
+    // Wait for all messages to be processed
+    const results = await Promise.allSettled(messagePromises);
+
+    console.log(`✅ Campaign message processing completed: ${successCount}/${allUsers.length} successful`);
+
+    // Send delivery confirmation to sender
+    socket.emit('message_delivered', { 
+      messageId: "", // Campaign messages don't have a single ID
+    });
+
+    // Optionally send detailed status
+    if (failedRecipients.length > 0) {
+      console.log(`⚠️ Failed to send to ${failedRecipients.length} recipients`);
+    }
+
+  } catch (error) {
+    console.error('❌ Error sending campaign message:', error);
+    socket.emit('error', { message: 'Failed to send campaign message. Please try again.' });
+  }
+});
+
+
       // Handle joining specific conversations
       socket.on('join_conversation', async (data) => {
         console.log("🏠 Join conversation event received:", data);
@@ -363,7 +492,6 @@ export const setupSocket = (io: Server<ClientToServerEvents, ServerToClientEvent
     socket.on('error', (error) => {
       console.error(`❌ Socket error for user ${userId}:`, error);
     });
-
   });
 
   // Handle server-level errors
